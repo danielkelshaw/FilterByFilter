@@ -1,0 +1,5 @@
+(executable
+  (name filter)
+  (libraries lwt cohttp cohttp-lwt-unix lambdasoup)
+)
+
