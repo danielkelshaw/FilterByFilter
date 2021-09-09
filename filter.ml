@@ -17,6 +17,16 @@ type coffee = {
   url           : Uri.t;
 }
 
+let print_coffee c =
+  let output = "" in
+  let output = output ^ Printf.sprintf "Name:          %s [%s]\n" c.name (c.url |> Uri.to_string) in
+  let output = output ^ Printf.sprintf "Origin:        %s\n" (String.concat ", " c.origin) in
+  let output = output ^ Printf.sprintf "Altitude:      %s\n" (String.concat ", " c.altitude) in
+  let output = output ^ Printf.sprintf "Process:       %s\n" (String.concat ", " c.process) in
+  let output = output ^ Printf.sprintf "Tasting Notes: %s\n" (String.concat ", " c.tasting_notes) in
+  let output = output ^ Printf.sprintf "Price:         %s\n" c.price in
+  output
+
 let sqmile_product_details header nodes =
   List.filter_map (fun node ->
     match node $? "i" with
@@ -28,6 +38,11 @@ let sqmile_product_details header nodes =
       else None
     | None -> None
   ) nodes
+
+let empty_list_default list =
+  match list with
+  | [] -> ["UNKNOWN"]
+  | list -> list
 
 let get_product_links homepage =
   match homepage with
@@ -53,15 +68,19 @@ let scrape_product product_page =
       let desc = soup $ "meta[property=\"og:description\"]" |> attribute "content" |> Option.value ~default:"Missing Description" in
 
       let origin_process_altitude_soups = Soup.flatten (fun s -> s $$ "p") (soup $$ "div[class=\"sqmile-wysiwyg\"]" ) |> to_list in
-      let origin = sqmile_product_details "Country" origin_process_altitude_soups in
-      let altitude = sqmile_product_details "Altitude" origin_process_altitude_soups in
-      let process = sqmile_product_details "Process" origin_process_altitude_soups in
+      let origin = empty_list_default (sqmile_product_details "Country" origin_process_altitude_soups) in
+      let altitude = empty_list_default (sqmile_product_details "Altitude" origin_process_altitude_soups) in
+      let process = empty_list_default (sqmile_product_details "Process" origin_process_altitude_soups) in
 
       let price = soup $ "span[itemprop=\"price\"]" |> leaf_text |> require in
 
-      let tasting_note_soup = soup $$ "div[class=\"sqm-product-tasting-notes-pp\"]" |> to_list in
-      let tasting_notes = List.filter_map (fun node -> node |> leaf_text) tasting_note_soup
-
+      let tasting_notes = 
+        match soup $ "div[class=\"tns\"]" |> leaf_text with
+        | Some s -> if s = "Tasting Notes" then 
+                      let tasting_note_soup = soup $$ "div[class=\"sqm-product-tasting-notes-pp\"]" |> to_list in
+                      List.map (fun node -> node |> texts |> List.filter (fun x -> not (String.contains x '/')) |> String.concat ", ") tasting_note_soup
+                    else ["UNKNOWN"]
+        | None -> ["UNKNOWN"]
       in
 
         {
@@ -80,5 +99,5 @@ let () =
   Lwt_main.run (get_product_links shop >>= 
     fun pp_list ->
       Lwt.all (List.map scrape_product pp_list) >|= 
-        List.iter (fun x -> print_endline (x.url |> Uri.to_string))
+        List.iter (fun x -> print_coffee x |> print_endline)
   )
